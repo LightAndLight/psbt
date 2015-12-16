@@ -1,3 +1,6 @@
+-- | Module      : PSBT.SemVer.Range
+--   Description : SemVer range parsing
+
 module PSBT.SemVer.Range (
     Range(..)
     , displayRange
@@ -13,6 +16,7 @@ import Text.Megaparsec.String (Parser)
 import PSBT.SemVer.Util
 import PSBT.SemVer.Version
 
+-- | Datatype for a SemVer range
 data Range = Lt Version
            | Lte Version
            | Gt Version
@@ -28,30 +32,34 @@ data Partial = Zero
              | Three Version
              deriving Show
 
-range :: Parser Range
-range = try (Or <$> simpleRange <* logicalOr <*> range) <|> simpleRange
+partialVersion :: Partial -> Version
+partialVersion Zero = emptyVersion
+partialVersion (One n) = emptyVersion { major = n }
+partialVersion (Two n m) = emptyVersion { major = n, minor = m}
+partialVersion (Three ver) = ver
 
-logicalOr :: Parser String
-logicalOr = between whitespace whitespace (string "||")
+nr :: Parser Integer
+nr = read <$> (try (string "0") <|> nonZeroDigits)
   where
-    whitespace = many $ char ' '
+    nonZeroDigits = (:) <$> positiveDigit <*> many digitChar
 
-andRanges :: Parser Range
-andRanges = try (And <$> simple <* char ' ' <*> andRanges) <|> simple
+wildcards :: Parser Char
+wildcards = char 'x' <|> char 'X' <|> char '*'
 
-simpleRange :: Parser Range
-simpleRange = try hyphen <|> try andRanges <|> (eof *> pure (Gte emptyVersion))
+partial :: Parser Partial
+partial = try (Three <$> version)
+      <|> try (Two <$> nr <* char '.' <*> nr <* optional (char '.' *> wildcards))
+      <|> try (One <$> nr <* optional (char '.' *> wildcards *> optional (char '.' *> wildcards)))
+      <|> wildcards *> pure Zero
 
 partialHyphenUpper :: Partial -> Range
+partialHyphenUpper Zero = error "The upper bound of a hyphen range cannot be a single wildcard"
 partialHyphenUpper (One n) = Lt emptyVersion { major = n + 1 }
 partialHyphenUpper (Two n m) = Lt emptyVersion { major = n, minor = m + 1 }
 partialHyphenUpper (Three ver) = Lte ver
 
 hyphen :: Parser Range
 hyphen = (And . Gte . partialVersion <$> partial) <* string " - " <*> (partialHyphenUpper <$> partial)
-
-simple :: Parser Range
-simple = try primitive <|> try (partialRange <$> partial) <|> try tilde <|> caret
 
 primitive :: Parser Range
 primitive = (try (string "<=" *> pure Lte)
@@ -61,21 +69,6 @@ primitive = (try (string "<=" *> pure Lte)
              <|> try (char '=' *> pure E)
              <|> pure E)
              <*> version
-
-incPatch :: Version -> Version
-incPatch ver = ver { patch = patch ver + 1 }
-
-incMinor :: Version -> Version
-incMinor ver = ver { minor = minor ver + 1, patch = 0 }
-
-incMajor :: Version -> Version
-incMajor ver = ver { major = major ver + 1, minor = 0, patch = 0 }
-
-partialVersion :: Partial -> Version
-partialVersion Zero = emptyVersion
-partialVersion (One n) = emptyVersion { major = n }
-partialVersion (Two n m) = emptyVersion { major = n, minor = m}
-partialVersion (Three ver) = ver
 
 partialFunc :: (Version -> Version)
             -> (Version -> Version)
@@ -89,11 +82,23 @@ partialFunc one two three p = And (Gte ver) . Lt $ case p of
   where
     ver = partialVersion p
 
+incMajor :: Version -> Version
+incMajor ver = ver { major = major ver + 1, minor = 0, patch = 0 }
+
+incMinor :: Version -> Version
+incMinor ver = ver { minor = minor ver + 1, patch = 0 }
+
+incPatch :: Version -> Version
+incPatch ver = ver { patch = patch ver + 1 }
+
 partialRange :: Partial -> Range
 partialRange = partialFunc incMajor incMinor incPatch
 
 partialTilde :: Partial -> Range
 partialTilde = partialFunc incMajor incMinor incMinor
+
+tilde :: Parser Range
+tilde = char '~' *> (partialTilde <$> partial)
 
 partialCaret :: Partial -> Range
 partialCaret = partialFunc incMajor caretTwo caretThree
@@ -106,42 +111,43 @@ partialCaret = partialFunc incMajor caretTwo caretThree
       | major ver == 0 = incMinor ver
       | otherwise = incMajor ver
 
-wildcards :: Parser Char
-wildcards = char 'x' <|> char 'X' <|> char '*'
-
-partial :: Parser Partial
-partial = try (Three <$> version)
-      <|> try (Two <$> nr <* char '.' <*> nr <* optional (char '.' *> wildcards))
-      <|> try (One <$> nr <* optional (char '.' *> wildcards *> optional (char '.' *> wildcards)))
-      <|> wildcards *> pure Zero
-
-nr :: Parser Integer
-nr = read <$> (try (string "0") <|> nonZeroDigits)
-  where
-    nonZeroDigits = (:) <$> positiveDigit <*> many digitChar
-
-tilde :: Parser Range
-tilde = char '~' *> (partialTilde <$> partial)
-
 caret :: Parser Range
 caret = char '^' *> (partialCaret <$> partial)
 
-qualifier :: ([String] -> [String] -> t) -> Parser t
-qualifier f = f <$> (try (char '-' *> pre) <|> pure [])
-    <*> ((char '+' *> build) <|> pure [])
+simple :: Parser Range
+simple = try primitive
+     <|> try (partialRange <$> partial)
+     <|> try tilde
+     <|> caret
 
-pre :: Parser [String]
-pre = parts
+andRanges :: Parser Range
+andRanges = try (And <$> simple <* char ' ' <*> andRanges) <|> simple
 
-build :: Parser [String]
-build = parts
+simpleRange :: Parser Range
+simpleRange = try hyphen
+          <|> try andRanges
+          <|> (eof *> pure (Gte emptyVersion))
 
-parts :: Parser [String]
-parts = (:) <$> part <*> many (char '.' *> part)
+logicalOr :: Parser String
+logicalOr = whitespace *> string "||" <* whitespace
+  where
+    whitespace = many $ char ' '
 
-part :: Parser String
-part = try (show <$> nr) <|> some (try (char '-') <|> alphaNumChar)
+-- | Parser for SemVer ranges
+--
+-- Accepts all formats specified in the node-semver docs
+-- <https://github.com/npm/node-semver#ranges>
+range :: Parser Range
+range = try (Or <$> simpleRange <* logicalOr <*> range)
+    <|> simpleRange
 
+-- | Gets a textual representation of a Range
+--
+-- Parsing the result of displayRange does not necessarily give you the same
+-- tree back, but it will definitely give you an equivalent tree.
+--
+-- Similarly, parsing a string then calling displayRange on the result may not
+-- yield the original string, but it will be equivalent.
 displayRange :: Range -> String
 displayRange (Lt v) = "<" ++ displayVersion v
 displayRange (Lte v) = "<=" ++ displayVersion v
