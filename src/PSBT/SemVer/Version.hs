@@ -94,7 +94,7 @@ verPreAndBuild = withBuild verPrerelease
 verBuild :: Parser Version
 verBuild = withBuild versionCore
 
--- | Parser for SemVer versions
+-- | Parser for a SemVer version
 version :: Parser Version
 version = try verPreAndBuild
     <|> try verPrerelease
