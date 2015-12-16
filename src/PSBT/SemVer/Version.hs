@@ -29,7 +29,7 @@ data Version = Version {
 
 -- | The empty version
 emptyVersion :: Version
-emptyVersion = Version False 0 0 0 [] []
+emptyVersion = Version 0 0 0 [] []
 
 numericId :: Parser String
 numericId = try case1 <|> try case2 <|> case3
