@@ -29,7 +29,7 @@ import PSBT.SemVer
 
 data Dependency = Dependency {
     packageName :: Text
-    , version :: Version
+    , version :: Maybe Range
     } deriving Show
 
 data Bower = Bower {
@@ -52,9 +52,9 @@ asDependencies = do
   where
     getDependency (name,versionStr)
       | versionStr == "latest" = return
-          (Dependency name $ Version True 0 0 0 [] [])
-      | otherwise = case parseMaybe semVer versionStr of
-            Just version -> return $ Dependency name version
+          (Dependency name Nothing)
+      | otherwise = case parseMaybe range versionStr of
+            Just r -> return $ Dependency name (Just r)
             Nothing      -> throwCustomError "Invalid version format"
 
 asBower :: Parse Text Bower

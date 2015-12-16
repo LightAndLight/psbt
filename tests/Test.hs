@@ -5,7 +5,7 @@ import Test.QuickCheck.Gen (Gen, elements, oneof, sized)
 import Test.QuickCheck.Modifiers (NonNegative(..), getNonNegative)
 import Text.Megaparsec (ParseError, parse)
 
-import PSBT
+import PSBT.SemVer
 
 instance Arbitrary Range where
     arbitrary = oneof [
@@ -16,11 +16,11 @@ instance Arbitrary Range where
 nonNegative :: Gen Integer
 nonNegative = getNonNegative <$> arbitrary
 
-parseSemVer :: String -> Either ParseError Version
-parseSemVer = parse semVer "QuickCheck"
+parseVersion :: String -> Either ParseError Version
+parseVersion = parse version "QuickCheck"
 
 parseRange :: String -> Either ParseError Range
-parseRange = parse semVerRange "QuickCheck"
+parseRange = parse range "QuickCheck"
 
 -------------------------------------------------------------------------------
 
@@ -32,9 +32,9 @@ instance Arbitrary Version where
         pure [] <*>
         pure []
 
-displaySemVerIso1 :: Version -> Bool
-displaySemVerIso1 ver =
-    parseSemVer (displaySemVer ver) == Right ver
+displayVersionIso1 :: Version -> Bool
+displayVersionIso1 ver =
+    parseVersion (displayVersion ver) == Right ver
 
 newtype VersionString = VersionString { getVersionString :: String }
     deriving (Eq, Show)
@@ -46,9 +46,9 @@ instance Arbitrary VersionString where
         pat <- nonNegative
         return $ show maj ++ "." ++ show min ++ "." ++ show pat
 
-displaySemVerIso2 :: VersionString -> Bool
-displaySemVerIso2 (VersionString str) = 
-    fmap displaySemVer (parseSemVer str) == Right str
+displayVersionIso2 :: VersionString -> Bool
+displayVersionIso2 (VersionString str) = 
+    fmap displayVersion (parseVersion str) == Right str
 
 justVersionIsEquals :: VersionString -> Bool
 justVersionIsEquals (VersionString str) =
@@ -131,7 +131,7 @@ test6 = parseRange "" == res
      && parseRange "x" == res
      && parseRange "X" == res
   where
-    res = Right (E emptyVersion)
+    res = Right (Gte emptyVersion)
 
 test7 :: Bool
 test7 = parseRange "1" == res
@@ -250,8 +250,8 @@ test17 = parseRange "^1" == res
 
 tests :: [Test]
 tests = [
-    testProperty "displaySemVer isomorphism - Version to String to Version" displaySemVerIso1
-    , testProperty "Normal hyphen range" displaySemVerIso2
+    testProperty "displayVersion isomorphism - Version to String to Version" displayVersionIso1
+    , testProperty "Normal hyphen range" displayVersionIso2
     , testProperty "displayRangeisomorphism - String to Range to String" displayRangeIso
     , testProperty "Normal hyphen range" test1
     , testProperty "Major and minor on left" test2
