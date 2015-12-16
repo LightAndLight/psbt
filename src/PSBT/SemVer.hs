@@ -1,3 +1,6 @@
+-- | Module      : PSBT.SemVer
+--   Description : SemVer parsing
+
 module PSBT.SemVer (
     Range(..)
     , Version(..)
