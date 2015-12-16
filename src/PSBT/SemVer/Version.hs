@@ -20,8 +20,7 @@ import PSBT.SemVer.Util
 
 -- | Datatype for a SemVer version
 data Version = Version {
-    useLatest        :: Bool
-    , major          :: Integer
+    major          :: Integer
     , minor          :: Integer
     , patch          :: Integer
     , prereleaseTags :: [String]
@@ -103,8 +102,7 @@ version = try verPreAndBuild
 
 -- | Gets the textual representation of a Version
 displayVersion :: Version -> String
-displayVersion (Version True _ _ _ _ _) = "latest"
-displayVersion (Version _ maj min pat pre build) = 
+displayVersion (Version maj min pat pre build) = 
     show maj ++ "." ++
     show min ++ "." ++ 
     show pat ++
