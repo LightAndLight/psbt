@@ -1,3 +1,6 @@
+-- | Module      : PSBT.SemVer.Version
+--   Description : SemVer version parsing
+
 module PSBT.SemVer.Version (
     Version(..)
     , displayVersion
@@ -15,6 +18,7 @@ import Text.Megaparsec.String
 
 import PSBT.SemVer.Util
 
+-- | Datatype for a SemVer version
 data Version = Version {
     useLatest        :: Bool
     , major          :: Integer
@@ -24,8 +28,16 @@ data Version = Version {
     , buildTags      :: [String]
     } deriving (Eq, Show)
 
+-- | The empty version
 emptyVersion :: Version
 emptyVersion = Version False 0 0 0 [] []
+
+numericId :: Parser String
+numericId = try case1 <|> try case2 <|> case3
+  where
+    case1 = (:) <$> positiveDigit <*> some digitChar
+    case2 = return <$> positiveDigit
+    case3 = return <$> char '0'
 
 nonDigit :: Parser Char
 nonDigit = letterChar <|> char '-'
@@ -40,13 +52,6 @@ alphanumId = try case1 <|> try case2 <|> try case3 <|> case4
     case2 = (:) <$> nonDigit <*> some identifier
     case3 = (++) <$> some identifier <*> case2
     case4 = return <$> nonDigit
-
-numericId :: Parser String
-numericId = try case1 <|> try case2 <|> case3
-  where
-    case1 = (:) <$> positiveDigit <*> some digitChar
-    case2 = return <$> positiveDigit
-    case3 = return <$> char '0'
 
 prereleaseId :: Parser String
 prereleaseId = try numericId <|> alphanumId
@@ -69,13 +74,6 @@ buildId = alphanumId <|> some digitChar
 build :: Parser [String]
 build = sepBy1 buildId (char '.')
 
-verPrerelease :: Parser Version
-verPrerelease = do
-    ver <- versionCore
-    char '-'
-    pres <- prerelease
-    return $ ver { prereleaseTags = pres }
-
 withBuild :: Parser Version -> Parser Version
 withBuild pver = do
     ver <- pver
@@ -83,18 +81,27 @@ withBuild pver = do
     bs <- build
     return $ ver { buildTags = bs }
 
+verPrerelease :: Parser Version
+verPrerelease = do
+    ver <- versionCore
+    char '-'
+    pres <- prerelease
+    return $ ver { prereleaseTags = pres }
+
 verPreAndBuild :: Parser Version
 verPreAndBuild = withBuild verPrerelease
 
 verBuild :: Parser Version
 verBuild = withBuild versionCore
 
+-- | Parser for SemVer versions
 version :: Parser Version
 version = try verPreAndBuild
     <|> try verPrerelease
     <|> try verBuild 
     <|> versionCore
 
+-- | Gets the textual representation of a Version
 displayVersion :: Version -> String
 displayVersion (Version True _ _ _ _ _) = "latest"
 displayVersion (Version _ maj min pat pre build) = 
