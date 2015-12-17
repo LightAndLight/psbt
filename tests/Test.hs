@@ -25,7 +25,7 @@ parseRange = parse range "QuickCheck"
 -------------------------------------------------------------------------------
 
 instance Arbitrary Version where
-    arbitrary = Version False <$>
+    arbitrary = Version <$>
         (getNonNegative <$> arbitrary) <*>
         (getNonNegative <$> arbitrary) <*>
         (getNonNegative <$> arbitrary) <*>
@@ -248,6 +248,24 @@ test17 = parseRange "^1" == res
     v2 = Lt emptyVersion { major = 2, minor = 0, patch = 0 }
     res = Right (And v1 v2)
 
+test18 :: Bool
+test18 = ver1 < ver2
+      && ver2 < ver3
+      && ver3 < ver4
+      && ver4 < ver5
+      && ver5 < ver6
+      && ver6 < ver7
+      && ver7 < ver8
+  where
+    ver1 = Version 1 0 0 [AlphaNum "alpha"] []
+    ver2 = Version 1 0 0 [AlphaNum "alpha",Num 1] []
+    ver3 = Version 1 0 0 [AlphaNum "alpha",AlphaNum "beta"] []
+    ver4 = Version 1 0 0 [AlphaNum "beta"] []
+    ver5 = Version 1 0 0 [AlphaNum "beta",Num 2] []
+    ver6 = Version 1 0 0 [AlphaNum "beta",Num 11] []
+    ver7 = Version 1 0 0 [AlphaNum "rc",Num 1] []
+    ver8 = Version 1 0 0 [] []
+
 tests :: [Test]
 tests = [
     testProperty "displayVersion isomorphism - Version to String to Version" displayVersionIso1
@@ -270,6 +288,7 @@ tests = [
     , testProperty "Caret range - only major and minor, no zeroes" test15
     , testProperty "Caret range - only major and minor, zero major" test16
     , testProperty "Caret range - only major" test17
+    , testProperty "Version ordering test" test18
     ]
 
 main = defaultMain tests

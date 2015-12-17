@@ -2,7 +2,9 @@
 --   Description : SemVer version parsing
 
 module PSBT.SemVer.Version (
-    Version(..)
+    Identifier(..)
+    , Version(..)
+    , displayIdentifier
     , displayVersion
     , emptyVersion
     , version
@@ -18,14 +20,36 @@ import Text.Megaparsec.String
 
 import PSBT.SemVer.Util
 
+data Identifier = Num Int
+           | AlphaNum String
+           deriving (Eq, Show)
+
 -- | Datatype for a SemVer version
 data Version = Version {
     major          :: Integer
     , minor          :: Integer
     , patch          :: Integer
-    , prereleaseTags :: [String]
+    , prereleaseTags :: [Identifier]
     , buildTags      :: [String]
     } deriving (Eq, Show)
+
+instance Ord Identifier where
+    compare (Num n) (Num m) = compare n m
+    compare (Num n) (AlphaNum xs) = LT
+    compare (AlphaNum xs) (Num n) = GT
+    compare (AlphaNum xs) (AlphaNum ys) = compare xs ys
+
+instance Ord Version where
+    compare v1 v2
+      | major v1 > major v2 = GT
+      | major v1 < major v2 = LT
+      | minor v1 > minor v2 = GT
+      | minor v1 < minor v2 = LT
+      | patch v1 > patch v2 = GT
+      | patch v1 < patch v2 = LT
+      | null (prereleaseTags v1) = GT
+      | null (prereleaseTags v2) = LT
+      | otherwise = compare (prereleaseTags v1) (prereleaseTags v2)
 
 -- | The empty version
 emptyVersion :: Version
@@ -52,10 +76,10 @@ alphanumId = try case1 <|> try case2 <|> try case3 <|> case4
     case3 = (++) <$> some identifier <*> case2
     case4 = return <$> nonDigit
 
-prereleaseId :: Parser String
-prereleaseId = try numericId <|> alphanumId
+prereleaseId :: Parser Identifier
+prereleaseId = try (Num . read <$> numericId) <|> (AlphaNum <$> alphanumId)
 
-prerelease :: Parser [String]
+prerelease :: Parser [Identifier]
 prerelease = sepBy1 prereleaseId (char '.')
 
 versionCore :: Parser Version
@@ -100,11 +124,15 @@ version = try verPreAndBuild
     <|> try verBuild 
     <|> versionCore
 
+displayIdentifier :: Identifier -> String
+displayIdentifier (Num n) = show n
+displayIdentifier (AlphaNum xs) = xs
+
 -- | Gets the textual representation of a Version
 displayVersion :: Version -> String
 displayVersion (Version maj min pat pre build) = 
     show maj ++ "." ++
     show min ++ "." ++ 
     show pat ++
-    (if null pre then "" else '-' : intercalate "." pre) ++
+    (if null pre then "" else '-' : intercalate "." (map displayIdentifier pre)) ++
     (if null build then "" else '+' : intercalate "." build)

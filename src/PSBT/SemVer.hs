@@ -2,8 +2,10 @@
 --   Description : SemVer parsing
 
 module PSBT.SemVer (
-    Range(..)
+    Identifier(..)
+    , Range(..)
     , Version(..)
+    , displayIdentifier
     , displayRange
     , displayVersion
     , emptyVersion
