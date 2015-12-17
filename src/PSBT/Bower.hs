@@ -15,15 +15,15 @@ import Control.Monad.Trans.Except (ExceptT, catchE, runExceptT, throwE)
 import Control.Monad.Trans.Reader (ReaderT(..), runReaderT)
 import Data.Aeson (FromJSON, Value(..), parseJSON)
 import Data.Aeson.BetterErrors (Parse, ParseError, asBool, asObject, asString, displayError, eachInArray,
-                                eachInObject, key, keyMay, keyOrDefault, parse, throwCustomError)
-import Data.Aeson.BetterErrors.Internal (ParseT(..), liftParse)
-import Data.Aeson.Types (Object, Parser)
+                                eachInObject, key, keyMay, keyOrDefault, throwCustomError)
+import qualified Data.Aeson.BetterErrors as A (parse)
 import qualified Data.ByteString.Lazy as B (readFile)
 import Data.HashMap.Lazy (HashMap, toList)
 import Data.Text (Text)
-import qualified Data.Text as T (unlines)
+import qualified Data.Text as T (pack, unlines)
 import System.Directory (doesFileExist)
-import Text.Megaparsec (parseMaybe)
+import Text.Megaparsec (errorMessages, messageString)
+import qualified Text.Megaparsec as M (parse)
 
 import PSBT.SemVer
 
@@ -51,11 +51,10 @@ asDependencies = do
     traverse getDependency depList
   where
     getDependency (name,versionStr)
-      | versionStr == "latest" = return
-          (Dependency name Nothing)
-      | otherwise = case parseMaybe range versionStr of
-            Just r -> return $ Dependency name (Just r)
-            Nothing      -> throwCustomError "Invalid version format"
+      | versionStr == "latest" = return $ Dependency name Nothing
+      | otherwise = case M.parse range "Bower" versionStr of
+            Right r  -> return $ Dependency name (Just r)
+            Left e -> throwCustomError . T.pack . unlines . map messageString . errorMessages $ e
 
 asBower :: Parse Text Bower
 asBower = Bower <$>
@@ -71,7 +70,7 @@ readBowerFile fp = do
         exists <- liftIO $ doesFileExist fp
         unless exists (throwE $ FileNotFound fp)
         bower <- liftIO $ B.readFile fp
-        case parse asBower bower of
+        case A.parse asBower bower of
             Left e  -> throwE (JSONError . T.unlines $ displayError id e)
             Right b -> return b
 
