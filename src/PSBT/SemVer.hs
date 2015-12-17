@@ -9,6 +9,7 @@ module PSBT.SemVer (
     , displayRange
     , displayVersion
     , emptyVersion
+    , inRange
     , range
     , version
 ) where
