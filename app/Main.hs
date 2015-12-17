@@ -11,6 +11,7 @@ import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy as B
 import Data.Foldable (maximumBy, traverse_)
 import Data.HashMap.Lazy (HashMap, keys)
+import Data.List (intercalate)
 import Data.Maybe (catMaybes, fromJust)
 import qualified Data.Text as T (unpack)
 import Network.HTTP
@@ -18,8 +19,9 @@ import qualified Network.Stream as S (Result)
 import Network.URI (parseURI)
 import Options.Applicative
 import System.Directory
+import System.Exit (ExitCode)
 import System.IO (openFile, hClose, IOMode(ReadWriteMode))
-import System.Process (readProcess)
+import System.Process (readProcess, runInteractiveCommand, waitForProcess)
 import Text.Megaparsec (parseMaybe)
 
 import PSBT.Bower
@@ -106,6 +108,14 @@ getListing pkg = do
     response = simpleHTTP request :: IO (S.Result (Response ByteString))
     parseResponse = decode . rspBody :: Response ByteString -> Maybe [PackageListing]
 
+runSilently :: FilePath -> [String] -> IO ()
+runSilently fp args = do
+    (stdin, stdout, stderr, ph) <- runInteractiveCommand (intercalate " " $ fp : args)
+    hClose stdin
+    hClose stdout
+    waitForProcess ph
+    hClose stderr
+
 checkoutCorrectVersion :: Dependency -> IO ()
 checkoutCorrectVersion dep = do
     setCurrentDirectory $ "dependencies/" ++ T.unpack (packageName dep)
@@ -114,7 +124,9 @@ checkoutCorrectVersion dep = do
     let max = case version dep of
             Nothing  -> maximumBy compare versions
             Just range -> foldr (maxInRange range) S.emptyVersion versions
-    readProcess "git" ["checkout", 'v' : S.displayVersion max] ""
+    let versionString = 'v' : S.displayVersion max
+    putStrLn $ "Checking out " ++ versionString ++ "..."
+    runSilently "git" ["checkout", versionString]
     setCurrentDirectory "../../"
   where
     maxInRange range ver currentMax
@@ -129,7 +141,9 @@ download dep = do
     unless b $ do
         (PackageListing pkgName url) <- getListing pkg
         let gitArgs = ["clone", url, "dependencies/" ++ pkgName]
-        liftIO $ readProcess "git" gitArgs "" >>= putStrLn
+        liftIO $ do
+            putStrLn $ "Downloading " ++ pkgName ++ "..."
+            runSilently "git" gitArgs
     liftIO $ checkoutCorrectVersion dep
     downloadBowerDeps ("dependencies/" ++ pkg ++ "/bower.json")
 
@@ -161,6 +175,7 @@ runBuild :: Maybe String -> ExceptT BuildError IO ()
 runBuild out = do
     deps <- downloadBowerDeps "bower.json"
     liftIO $ do
+        putStrLn ""
         readProcess "psc" pscArgs "" >>= putStrLn
         case out of
             Just s -> readProcess "psc-bundle" (pscBundleArgs s) "" >>= putStrLn
