@@ -4,6 +4,7 @@
 module PSBT.SemVer.Range (
     Range(..)
     , displayRange
+    , inRange
     , range
 ) where
 
@@ -156,3 +157,13 @@ displayRange (Gte v) = ">=" ++ displayVersion v
 displayRange (E v) = "=" ++ displayVersion v
 displayRange (And r1 r2) = displayRange r1 ++ " " ++ displayRange r2
 displayRange (Or r1 r2) = displayRange r1 ++ " || " ++ displayRange r2
+
+-- | Checks whether a version is contained in a given range
+inRange :: Version -> Range -> Bool
+inRange v1 (Lt v2) = v1 < v2
+inRange v1 (Lte v2) = v1 <= v2
+inRange v1 (Gt v2) = v1 > v2
+inRange v1 (Gte v2) = v1 >= v2
+inRange v1 (E v2) = v1 == v2
+inRange ver (And r1 r2) = inRange ver r1 && inRange ver r2
+inRange ver (Or r1 r2) = inRange ver r1 || inRange ver r2
