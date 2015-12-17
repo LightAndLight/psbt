@@ -9,9 +9,9 @@ import Control.Monad.Trans.Except (ExceptT(..), catchE, runExceptT, throwE)
 import Data.Aeson
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy as B
-import Data.Foldable (traverse_)
+import Data.Foldable (maximumBy, traverse_)
 import Data.HashMap.Lazy (HashMap, keys)
-import Data.Maybe (fromJust)
+import Data.Maybe (catMaybes, fromJust)
 import qualified Data.Text as T (unpack)
 import Network.HTTP
 import qualified Network.Stream as S (Result)
@@ -20,8 +20,10 @@ import Options.Applicative
 import System.Directory
 import System.IO (openFile, hClose, IOMode(ReadWriteMode))
 import System.Process (readProcess)
+import Text.Megaparsec (parseMaybe)
 
-import PSBT
+import PSBT.Bower
+import qualified PSBT.SemVer as S
 
 data Command = Init String
              | Build (Maybe String)
@@ -104,22 +106,41 @@ getListing pkg = do
     response = simpleHTTP request :: IO (S.Result (Response ByteString))
     parseResponse = decode . rspBody :: Response ByteString -> Maybe [PackageListing]
 
-download :: String -> ExceptT BuildError IO ()
-download pkg = do
+checkoutCorrectVersion :: Dependency -> IO ()
+checkoutCorrectVersion dep = do
+    setCurrentDirectory $ "dependencies/" ++ T.unpack (packageName dep)
+    tags <- readProcess "git" ["tag"] ""
+    let versions = catMaybes . map (parseMaybe S.version) . lines $ tags
+    let max = case version dep of
+            Nothing  -> maximumBy compare versions
+            Just range -> foldr (maxInRange range) S.emptyVersion versions
+    readProcess "git" ["checkout", 'v' : S.displayVersion max] ""
+    setCurrentDirectory "../../"
+  where
+    maxInRange range ver currentMax
+      | ver > currentMax && S.inRange ver range = ver
+      | otherwise = currentMax
+
+download :: Dependency -> ExceptT BuildError IO [Dependency]
+download dep = do
+    let pkg = T.unpack . packageName $ dep
     liftIO $ createDirectoryIfMissing False "dependencies"
     b <- liftIO $ doesDirectoryExist $ "dependencies/" ++ pkg
     unless b $ do
         (PackageListing pkgName url) <- getListing pkg
         let gitArgs = ["clone", url, "dependencies/" ++ pkgName]
         liftIO $ readProcess "git" gitArgs "" >>= putStrLn
+    liftIO $ checkoutCorrectVersion dep
     downloadBowerDeps ("dependencies/" ++ pkg ++ "/bower.json")
 
-downloadBowerDeps :: FilePath -> ExceptT BuildError IO ()
+downloadBowerDeps :: FilePath -> ExceptT BuildError IO [Dependency]
 downloadBowerDeps fp = do
     bower <- catchE (readBowerFile fp) (throwE . BowerBuildError)
     case dependencies bower of
-        Just deps -> traverse_ (download . T.unpack . packageName) deps
-        Nothing -> return ()
+        Just deps -> do
+            traverse_ download deps
+            return deps
+        Nothing -> return []
 
 pscArgs :: [String]
 pscArgs = ["src/Main.purs"
@@ -138,7 +159,7 @@ pscBundleArgs str = ["output/*/index.js"
 
 runBuild :: Maybe String -> ExceptT BuildError IO ()
 runBuild out = do
-    downloadBowerDeps "bower.json"
+    deps <- downloadBowerDeps "bower.json"
     liftIO $ do
         readProcess "psc" pscArgs "" >>= putStrLn
         case out of

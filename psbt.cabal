@@ -12,10 +12,9 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     PSBT
+  exposed-modules:     PSBT.Bower
                        , PSBT.SemVer
-  other-modules:       PSBT.Bower
-                       , PSBT.SemVer.Range
+  other-modules:       PSBT.SemVer.Range
                        , PSBT.SemVer.Util
                        , PSBT.SemVer.Version
   default-language:    Haskell2010
@@ -38,6 +37,7 @@ executable psbt
                        , aeson
                        , bytestring
                        , directory
+                       , megaparsec
                        , network-uri
                        , optparse-applicative
                        , process
