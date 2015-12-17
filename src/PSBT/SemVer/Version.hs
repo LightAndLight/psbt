@@ -119,10 +119,11 @@ verBuild = withBuild versionCore
 
 -- | Parser for a SemVer version
 version :: Parser Version
-version = try verPreAndBuild
+version = optional (char 'v')
+    *> (try verPreAndBuild
     <|> try verPrerelease
     <|> try verBuild 
-    <|> versionCore
+    <|> versionCore)
 
 displayIdentifier :: Identifier -> String
 displayIdentifier (Num n) = show n
