@@ -92,7 +92,7 @@ versionCore = do
     return emptyVersion { major = maj, minor = min, patch = pat }
 
 buildId :: Parser String
-buildId = alphanumId <|> some digitChar
+buildId = some (alphaNumChar <|> char '-')
 
 build :: Parser [String]
 build = sepBy1 buildId (char '.')

@@ -2,7 +2,7 @@ import Test.Framework (Test, defaultMain, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
 import Test.QuickCheck (Arbitrary, arbitrary)
 import Test.QuickCheck.Gen (Gen, elements, oneof, sized)
-import Test.QuickCheck.Modifiers (NonNegative(..), getNonNegative)
+import Test.QuickCheck.Modifiers (getNonNegative, getPositive)
 import Text.Megaparsec (ParseError, parse)
 
 import PSBT.SemVer
@@ -24,13 +24,36 @@ parseRange = parse range "QuickCheck"
 
 -------------------------------------------------------------------------------
 
+alphabetChars = ['A'..'Z'] ++ ['a'..'z']
+
+positiveNumChars = ['1'..'9']
+
+newtype Alphabet = Alphabet { getAlphabet :: String }
+
+instance Arbitrary Alphabet where
+    arbitrary = Alphabet <$> ((:) <$> chars <*> oneof [getAlphabet <$> arbitrary, pure []])
+      where
+        chars = oneof $ pure <$> alphabetChars
+
+newtype BuildTags = BuildTags { getBuildTags :: String }
+
+instance Arbitrary BuildTags where
+    arbitrary = BuildTags <$> ((:) <$> chars <*> oneof [getBuildTags <$> arbitrary, pure []])
+      where
+        chars = oneof $ pure <$> ('-' : positiveNumChars ++ alphabetChars)
+
+instance Arbitrary Identifier where
+    arbitrary = oneof [Num <$> (getPositive <$> arbitrary)
+        , AlphaNum . getAlphabet <$> arbitrary
+        ]
+
 instance Arbitrary Version where
     arbitrary = Version <$>
         (getNonNegative <$> arbitrary) <*>
         (getNonNegative <$> arbitrary) <*>
         (getNonNegative <$> arbitrary) <*>
-        pure [] <*>
-        pure []
+        arbitrary <*>
+        (fmap getBuildTags <$> arbitrary)
 
 displayVersionIso1 :: Version -> Bool
 displayVersionIso1 ver =
