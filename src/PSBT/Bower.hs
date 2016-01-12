@@ -7,30 +7,33 @@ module PSBT.Bower (
     , readBowerFile
 ) where
 
-import Control.Applicative ((<|>), empty, optional)
-import Control.Exception (Exception)
-import Control.Monad (unless)
-import Control.Monad.Catch (MonadThrow, throwM)
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Reader (ReaderT(..), runReaderT)
-import Data.Aeson (FromJSON, Value(..), parseJSON)
-import Data.Aeson.BetterErrors (Parse, ParseError, asBool, asObject, asString, displayError, eachInArray,
-                                eachInObject, key, keyMay, keyOrDefault, throwCustomError)
-import qualified Data.Aeson.BetterErrors as A (parse)
-import qualified Data.ByteString.Lazy as B (readFile)
-import Data.HashMap.Lazy (HashMap, toList)
-import Data.Text (Text)
-import qualified Data.Text as T (pack, unlines)
-import System.Directory (doesFileExist)
-import Text.Megaparsec (errorMessages, messageString)
-import qualified Text.Megaparsec as M (parse)
+import           Control.Applicative        (empty, optional, (<|>))
+import           Control.Exception          (Exception)
+import           Control.Monad              (unless)
+import           Control.Monad.Catch        (MonadThrow, throwM)
+import           Control.Monad.IO.Class     (MonadIO, liftIO)
+import           Control.Monad.Trans.Class  (lift)
+import           Control.Monad.Trans.Reader (ReaderT (..), runReaderT)
+import           Data.Aeson                 (FromJSON, Value (..), parseJSON)
+import           Data.Aeson.BetterErrors    (Parse, ParseError, asBool,
+                                             asObject, asString, displayError,
+                                             eachInArray, eachInObject, key,
+                                             keyMay, keyOrDefault,
+                                             throwCustomError)
+import qualified Data.Aeson.BetterErrors    as A (parse)
+import qualified Data.ByteString.Lazy       as B (readFile)
+import           Data.HashMap.Lazy          (HashMap, toList)
+import           Data.Text                  (Text)
+import qualified Data.Text                  as T (pack, unlines)
+import           System.Directory           (doesFileExist)
+import           Text.Megaparsec            (errorMessages, messageString)
+import qualified Text.Megaparsec            as M (parse)
 
-import PSBT.SemVer
+import           PSBT.SemVer
 
 data Dependency = Dependency {
     packageName :: Text
-    , version :: Maybe Range
+    , version   :: Maybe Range
     } deriving Show
 
 data Bower = Bower {
