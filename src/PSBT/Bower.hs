@@ -12,7 +12,7 @@ module PSBT.Bower (
 import           Control.Applicative        (empty, optional, (<|>))
 import           Control.Exception          (Exception)
 import           Control.Monad              (unless)
-import           Control.Monad.Catch        (Handler(..), MonadThrow, throwM)
+import           Control.Monad.Catch        (Handler (..), MonadThrow, throwM)
 import           Control.Monad.IO.Class     (MonadIO, liftIO)
 import           Control.Monad.Trans.Class  (lift)
 import           Control.Monad.Trans.Reader (ReaderT (..), runReaderT)
