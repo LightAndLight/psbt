@@ -1,7 +1,7 @@
 name:                psbt
 version:             0.1.0.0
 synopsis:            Package manager for PureScript
-homepage:            http://github.com/lightandlight/ppm#readme.md
+homepage:            http://github.com/lightandlight/psbt#readme.md
 license:             BSD3
 license-file:        LICENSE
 author:              Isaac Elliott
@@ -23,6 +23,7 @@ library
                        , aeson-better-errors
                        , bytestring
                        , directory
+                       , exceptions
                        , megaparsec
                        , unordered-containers
                        , text
@@ -37,6 +38,7 @@ executable psbt
                        , aeson
                        , bytestring
                        , directory
+                       , exceptions
                        , megaparsec
                        , network-uri
                        , optparse-applicative
