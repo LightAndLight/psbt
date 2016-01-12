@@ -4,13 +4,15 @@ module PSBT.Bower (
     Bower(..)
     , BowerError(..)
     , Dependency(..)
+    , bowerErrorHandler
+    , bowerErrorMessage
     , readBowerFile
 ) where
 
 import           Control.Applicative        (empty, optional, (<|>))
 import           Control.Exception          (Exception)
 import           Control.Monad              (unless)
-import           Control.Monad.Catch        (MonadThrow, throwM)
+import           Control.Monad.Catch        (Handler(..), MonadThrow, throwM)
 import           Control.Monad.IO.Class     (MonadIO, liftIO)
 import           Control.Monad.Trans.Class  (lift)
 import           Control.Monad.Trans.Reader (ReaderT (..), runReaderT)
@@ -24,7 +26,7 @@ import qualified Data.Aeson.BetterErrors    as A (parse)
 import qualified Data.ByteString.Lazy       as B (readFile)
 import           Data.HashMap.Lazy          (HashMap, toList)
 import           Data.Text                  (Text)
-import qualified Data.Text                  as T (pack, unlines)
+import qualified Data.Text                  as T (pack, unlines, unpack)
 import           System.Directory           (doesFileExist)
 import           Text.Megaparsec            (errorMessages, messageString)
 import qualified Text.Megaparsec            as M (parse)
@@ -79,3 +81,10 @@ readBowerFile fp = do
         case A.parse asBower bower of
             Left e  -> throwM (JSONError . T.unlines $ displayError id e)
             Right b -> return b
+
+bowerErrorMessage :: BowerError -> String
+bowerErrorMessage (JSONError msg) = "Error parsing bower.json: " ++ T.unpack msg
+bowerErrorMessage (FileNotFound fp) = "bower.json not found: " ++ fp ++ " does not exist"
+
+bowerErrorHandler :: MonadIO m => Handler m ()
+bowerErrorHandler = Handler $ liftIO . putStrLn . bowerErrorMessage
