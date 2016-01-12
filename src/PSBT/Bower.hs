@@ -8,10 +8,11 @@ module PSBT.Bower (
 ) where
 
 import Control.Applicative ((<|>), empty, optional)
+import Control.Exception (Exception)
 import Control.Monad (unless)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Catch (MonadThrow, throwM)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Except (ExceptT, catchE, runExceptT, throwE)
 import Control.Monad.Trans.Reader (ReaderT(..), runReaderT)
 import Data.Aeson (FromJSON, Value(..), parseJSON)
 import Data.Aeson.BetterErrors (Parse, ParseError, asBool, asObject, asString, displayError, eachInArray,
@@ -45,6 +46,8 @@ data BowerError = JSONError Text
                 | FileNotFound FilePath
                 deriving Show
 
+instance Exception BowerError where
+
 asDependencies :: Parse Text [Dependency]
 asDependencies = do
     depList <- eachInObject asString
@@ -65,12 +68,11 @@ asBower = Bower <$>
     keyMay "devDependencies" asDependencies <*>
     keyMay "resolutions" asDependencies
 
-readBowerFile :: FilePath -> ExceptT BowerError IO Bower
+readBowerFile :: (MonadIO m, MonadThrow m) => FilePath -> m Bower
 readBowerFile fp = do
         exists <- liftIO $ doesFileExist fp
-        unless exists (throwE $ FileNotFound fp)
+        unless exists (throwM $ FileNotFound fp)
         bower <- liftIO $ B.readFile fp
         case A.parse asBower bower of
-            Left e  -> throwE (JSONError . T.unlines $ displayError id e)
+            Left e  -> throwM (JSONError . T.unlines $ displayError id e)
             Right b -> return b
-

@@ -2,30 +2,33 @@
 
 module Main where
 
-import Control.Monad (unless)
-import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Except (ExceptT(..), catchE, runExceptT, throwE)
-import Data.Aeson
-import Data.ByteString.Lazy (ByteString)
-import qualified Data.ByteString.Lazy as B
-import Data.Foldable (maximumBy, traverse_)
-import Data.HashMap.Lazy (HashMap, keys)
-import Data.List (intercalate)
-import Data.Maybe (catMaybes, fromJust)
-import qualified Data.Text as T (unpack)
-import Network.HTTP
-import qualified Network.Stream as S (Result)
-import Network.URI (parseURI)
-import Options.Applicative
-import System.Directory
-import System.Exit (ExitCode)
-import System.IO (openFile, hClose, IOMode(ReadWriteMode))
-import System.Process (readProcess, runInteractiveCommand, waitForProcess)
-import Text.Megaparsec (parseMaybe)
+import           Control.Exception         (Exception)
+import           Control.Monad             (unless)
+import           Control.Monad.Catch       (MonadThrow, throwM)
+import           Control.Monad.IO.Class    (MonadIO, liftIO)
+import           Control.Monad.Trans.Class (lift)
+import           Data.Aeson
+import           Data.ByteString.Lazy      (ByteString)
+import qualified Data.ByteString.Lazy      as B
+import           Data.Foldable             (maximum, traverse_)
+import           Data.HashMap.Lazy         (HashMap, keys)
+import           Data.List                 (intercalate)
+import           Data.Maybe                (fromJust, mapMaybe)
+import qualified Data.Text                 as T (unpack)
+import           Network.HTTP
+import qualified Network.Stream            as S (Result)
+import           Network.URI               (parseURI)
+import           Options.Applicative
+import           System.Directory
+import           System.Exit               (ExitCode)
+import           System.IO                 (IOMode (ReadWriteMode), hClose,
+                                            openFile)
+import           System.Process            (readProcess, runInteractiveCommand,
+                                            waitForProcess)
+import           Text.Megaparsec           (parseMaybe)
 
-import PSBT.Bower
-import qualified PSBT.SemVer as S
+import           PSBT.Bower
+import qualified PSBT.SemVer               as S
 
 data Command = Init String
              | Build (Maybe String)
@@ -73,7 +76,7 @@ runInit str = do
 
 data PackageListing = PackageListing {
     pkgName :: String
-    , url :: String
+    , url   :: String
     } deriving Show
 
 instance FromJSON PackageListing where
@@ -83,34 +86,35 @@ instance FromJSON PackageListing where
     parseJSON _          = empty
 
 registry :: String
-registry = "http://bower.herokuapp.com/packages/search/" 
+registry = "http://bower.herokuapp.com/packages/search/"
 
 data BuildError = ListingNotFound String
                   | MultipleListingsFound [PackageListing]
                   | ConnectionError
                   | JSONParseError
-                  | BowerBuildError BowerError
                   deriving Show
 
-getListing :: String -> ExceptT BuildError IO PackageListing
+instance Exception BuildError where
+
+getListing :: (MonadIO m, MonadThrow m) => String -> m PackageListing
 getListing pkg = do
     res <- liftIO $ fmap (fmap parseResponse) response
     case res of
-        Left _              -> throwE ConnectionError
-        Right Nothing       -> throwE JSONParseError
-        Right (Just [])     -> throwE $ ListingNotFound pkg
+        Left _              -> throwM ConnectionError
+        Right Nothing       -> throwM JSONParseError
+        Right (Just [])     -> throwM $ ListingNotFound pkg
         Right (Just [ps])   -> return ps
         Right (Just (p:ps)) -> if pkgName p == pkg
                                     then return p
-                                    else throwE $ MultipleListingsFound (p:ps)
-  where 
+                                    else throwM $ MultipleListingsFound (p:ps)
+  where
     request = defaultGETRequest_ . fromJust . parseURI $ registry ++ pkg
     response = simpleHTTP request :: IO (S.Result (Response ByteString))
     parseResponse = decode . rspBody :: Response ByteString -> Maybe [PackageListing]
 
 runSilently :: FilePath -> [String] -> IO ()
 runSilently fp args = do
-    (stdin, stdout, stderr, ph) <- runInteractiveCommand (intercalate " " $ fp : args)
+    (stdin, stdout, stderr, ph) <- runInteractiveCommand (unwords $ fp : args)
     hClose stdin
     hClose stdout
     waitForProcess ph
@@ -120,9 +124,9 @@ checkoutCorrectVersion :: Dependency -> IO ()
 checkoutCorrectVersion dep = do
     setCurrentDirectory $ "dependencies/" ++ T.unpack (packageName dep)
     tags <- readProcess "git" ["tag"] ""
-    let versions = catMaybes . map (parseMaybe S.version) . lines $ tags
+    let versions = mapMaybe (parseMaybe S.version) . lines $ tags
     let max = case version dep of
-            Nothing  -> maximumBy compare versions
+            Nothing  -> maximum versions
             Just range -> foldr (maxInRange range) S.emptyVersion versions
     let versionString = 'v' : S.displayVersion max
     putStrLn $ "Checking out " ++ versionString ++ "..."
@@ -133,7 +137,7 @@ checkoutCorrectVersion dep = do
       | ver > currentMax && S.inRange ver range = ver
       | otherwise = currentMax
 
-download :: Dependency -> ExceptT BuildError IO [Dependency]
+download :: (MonadIO m, MonadThrow m) => Dependency -> m [Dependency]
 download dep = do
     let pkg = T.unpack . packageName $ dep
     liftIO $ createDirectoryIfMissing False "dependencies"
@@ -147,9 +151,9 @@ download dep = do
     liftIO $ checkoutCorrectVersion dep
     downloadBowerDeps ("dependencies/" ++ pkg ++ "/bower.json")
 
-downloadBowerDeps :: FilePath -> ExceptT BuildError IO [Dependency]
+downloadBowerDeps :: (MonadIO m, MonadThrow m) => FilePath -> m [Dependency]
 downloadBowerDeps fp = do
-    bower <- catchE (readBowerFile fp) (throwE . BowerBuildError)
+    bower <- readBowerFile fp
     case dependencies bower of
         Just deps -> do
             traverse_ download deps
@@ -171,7 +175,7 @@ pscBundleArgs str = ["output/*/index.js"
     , "-o", str
     ]
 
-runBuild :: Maybe String -> ExceptT BuildError IO ()
+runBuild :: (MonadIO m, MonadThrow m) => Maybe String -> m ()
 runBuild out = do
     deps <- downloadBowerDeps "bower.json"
     liftIO $ do
@@ -182,11 +186,9 @@ runBuild out = do
             Nothing -> return ()
         putStrLn "Build complete."
 
-data AppError = BuildAppError BuildError
-
-runCommand :: Command -> ExceptT AppError IO ()
+runCommand :: (MonadIO m, MonadThrow m) => Command -> m ()
 runCommand (Init dir) = liftIO $ runInit dir
-runCommand (Build out) = catchE (runBuild out) (throwE . BuildAppError) 
+runCommand (Build out) = runBuild out
 
 buildErrorMessage :: BuildError -> String
 buildErrorMessage (ListingNotFound str) = "Package " ++ str ++ " not found."
@@ -194,17 +196,8 @@ buildErrorMessage (MultipleListingsFound pkgs) =
     "Multiple packages found: \n" ++ unlines (map pkgName pkgs)
 buildErrorMessage ConnectionError = "There was a problem with the connection"
 buildErrorMessage JSONParseError = "Malformed JSON received"
-buildErrorMessage (BowerBuildError e) = case e of
-    JSONError txt -> T.unpack txt
-    FileNotFound str -> "File " ++ str ++ " not found"
-
-handleErrors :: Either AppError () -> IO ()
-handleErrors (Right v) = return v
-handleErrors (Left e) = putStrLn $ "Error: " ++ case e of
-    BuildAppError e' -> buildErrorMessage e'
 
 main :: IO ()
 main = do
     command <- customExecParser parserPrefs argsInfo
-    errors <- runExceptT $ runCommand command
-    handleErrors errors
+    runCommand command

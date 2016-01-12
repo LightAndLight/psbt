@@ -23,6 +23,7 @@ library
                        , aeson-better-errors
                        , bytestring
                        , directory
+                       , exceptions
                        , megaparsec
                        , unordered-containers
                        , text
@@ -37,6 +38,7 @@ executable psbt
                        , aeson
                        , bytestring
                        , directory
+                       , exceptions
                        , megaparsec
                        , network-uri
                        , optparse-applicative
