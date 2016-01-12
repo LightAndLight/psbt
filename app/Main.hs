@@ -1,34 +1,38 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings          #-}
 
 module Main where
 
-import           Control.Exception         (Exception)
-import           Control.Monad             (unless)
-import           Control.Monad.Catch       (MonadThrow, throwM)
-import           Control.Monad.IO.Class    (MonadIO, liftIO)
-import           Control.Monad.Trans.Class (lift)
+import           Control.Exception          (Exception, SomeException,
+                                             toException)
+import           Control.Monad              (unless)
+import           Control.Monad.Catch        (Handler (..), MonadThrow, catches,
+                                             throwM)
+import           Control.Monad.IO.Class     (MonadIO, liftIO)
+import           Control.Monad.Trans.Class  (lift)
+import           Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
 import           Data.Aeson
-import           Data.ByteString.Lazy      (ByteString)
-import qualified Data.ByteString.Lazy      as B
-import           Data.Foldable             (maximum, traverse_)
-import           Data.HashMap.Lazy         (HashMap, keys)
-import           Data.List                 (intercalate)
-import           Data.Maybe                (fromJust, mapMaybe)
-import qualified Data.Text                 as T (unpack)
+import           Data.ByteString.Lazy       (ByteString)
+import qualified Data.ByteString.Lazy       as B
+import           Data.Either                (isLeft)
+import           Data.Foldable              (maximum, traverse_)
+import           Data.HashMap.Lazy          (HashMap, keys)
+import           Data.List                  (intercalate)
+import           Data.Maybe                 (fromJust, mapMaybe)
+import qualified Data.Text                  as T (unpack)
 import           Network.HTTP
-import qualified Network.Stream            as S (Result)
-import           Network.URI               (parseURI)
+import qualified Network.Stream             as S (Result)
+import           Network.URI                (parseURI)
 import           Options.Applicative
 import           System.Directory
-import           System.Exit               (ExitCode)
-import           System.IO                 (IOMode (ReadWriteMode), hClose,
-                                            openFile)
-import           System.Process            (readProcess, runInteractiveCommand,
-                                            waitForProcess)
-import           Text.Megaparsec           (parseMaybe)
+import           System.Exit                (ExitCode)
+import           System.IO                  (IOMode (ReadWriteMode), hClose,
+                                             hGetContents, openFile)
+import           System.Process             (readProcess, runInteractiveCommand,
+                                             waitForProcess)
+import           Text.Megaparsec            (parseMaybe)
 
 import           PSBT.Bower
-import qualified PSBT.SemVer               as S
+import qualified PSBT.SemVer                as S
 
 data Command = Init String
              | Build (Maybe String)
@@ -64,8 +68,8 @@ argsInfo = info argsParser
 parserPrefs :: ParserPrefs
 parserPrefs = prefs showHelpOnError
 
-runInit :: String -> IO ()
-runInit str = do
+runInit :: MonadIO m => String -> m ()
+runInit str = liftIO $ do
     createDirectory str
     setCurrentDirectory str
     createDirectory "src"
@@ -118,10 +122,11 @@ runSilently fp args = do
     hClose stdin
     hClose stdout
     waitForProcess ph
+    hGetContents stderr >>= putStrLn
     hClose stderr
 
-checkoutCorrectVersion :: Dependency -> IO ()
-checkoutCorrectVersion dep = do
+checkoutCorrectVersion :: MonadIO m => Dependency -> m ()
+checkoutCorrectVersion dep = liftIO $ do
     setCurrentDirectory $ "dependencies/" ++ T.unpack (packageName dep)
     tags <- readProcess "git" ["tag"] ""
     let versions = mapMaybe (parseMaybe S.version) . lines $ tags
@@ -140,15 +145,16 @@ checkoutCorrectVersion dep = do
 download :: (MonadIO m, MonadThrow m) => Dependency -> m [Dependency]
 download dep = do
     let pkg = T.unpack . packageName $ dep
-    liftIO $ createDirectoryIfMissing False "dependencies"
-    b <- liftIO $ doesDirectoryExist $ "dependencies/" ++ pkg
+    b <- liftIO $ do
+      createDirectoryIfMissing False "dependencies"
+      doesDirectoryExist $ "dependencies/" ++ pkg
     unless b $ do
         (PackageListing pkgName url) <- getListing pkg
         let gitArgs = ["clone", url, "dependencies/" ++ pkgName]
         liftIO $ do
             putStrLn $ "Downloading " ++ pkgName ++ "..."
             runSilently "git" gitArgs
-    liftIO $ checkoutCorrectVersion dep
+    checkoutCorrectVersion dep
     downloadBowerDeps ("dependencies/" ++ pkg ++ "/bower.json")
 
 downloadBowerDeps :: (MonadIO m, MonadThrow m) => FilePath -> m [Dependency]
@@ -187,17 +193,18 @@ runBuild out = do
         putStrLn "Build complete."
 
 runCommand :: (MonadIO m, MonadThrow m) => Command -> m ()
-runCommand (Init dir) = liftIO $ runInit dir
+runCommand (Init dir) = runInit dir
 runCommand (Build out) = runBuild out
 
 buildErrorMessage :: BuildError -> String
 buildErrorMessage (ListingNotFound str) = "Package " ++ str ++ " not found."
-buildErrorMessage (MultipleListingsFound pkgs) =
-    "Multiple packages found: \n" ++ unlines (map pkgName pkgs)
+buildErrorMessage (MultipleListingsFound pkgs) = "Multiple packages found: \n" ++ unlines (map pkgName pkgs)
 buildErrorMessage ConnectionError = "There was a problem with the connection"
 buildErrorMessage JSONParseError = "Malformed JSON received"
 
-main :: IO ()
+buildErrorHandler :: MonadIO m => Handler m ()
+buildErrorHandler = Handler $ liftIO . putStrLn . buildErrorMessage
+
 main = do
-    command <- customExecParser parserPrefs argsInfo
-    runCommand command
+    command <- liftIO $ customExecParser parserPrefs argsInfo
+    catches (runCommand command) [bowerErrorHandler, buildErrorHandler]
