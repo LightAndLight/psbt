@@ -7,7 +7,7 @@ Currently supports project initialisation, (naive) dependency management via bow
 
 ## installation
 
-psbt requires git (used to install dependencies)
+psbt requires git (used to install dependencies) and psc (for compilation)
 
 It's not on stackage or hackage yet so just clone the repo and install:
 
