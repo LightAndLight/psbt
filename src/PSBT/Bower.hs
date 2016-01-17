@@ -6,6 +6,8 @@ module PSBT.Bower (
     , Dependency(..)
     , bowerErrorHandler
     , bowerErrorMessage
+    , createBowerFile
+    , minimalBower
     , readBowerFile
 ) where
 
@@ -24,12 +26,12 @@ import           Data.Aeson.BetterErrors    (Parse, ParseError, asBool,
                                              throwCustomError)
 import qualified Data.Aeson.BetterErrors    as A (parse)
 import qualified Data.ByteString.Lazy       as B (hPutStr, readFile)
-import Data.Char (toLower)
+import           Data.Char                  (toLower)
 import           Data.HashMap.Lazy          (HashMap, toList)
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T (pack, unlines, unpack)
 import           System.Directory           (doesFileExist)
-import System.IO (withFile, IOMode(WriteMode), writeFile)
+import           System.IO                  (IOMode(WriteMode), withFile, writeFile)
 import           Text.Megaparsec            (errorMessages, messageString)
 import qualified Text.Megaparsec            as M (parse)
 
@@ -51,6 +53,9 @@ data Bower = Bower {
     , devDependencies :: Maybe [Dependency]
     , resolutions     :: Maybe [Dependency]
     } deriving Show
+
+minimalBower :: String -> Bower
+minimalBower name = Bower name Nothing Nothing Nothing Nothing Nothing
 
 instance ToJSON Bower where
   toJSON b = object [
