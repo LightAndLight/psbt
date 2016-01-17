@@ -16,27 +16,32 @@ import           Control.Monad.Catch        (Handler (..), MonadThrow, throwM)
 import           Control.Monad.IO.Class     (MonadIO, liftIO)
 import           Control.Monad.Trans.Class  (lift)
 import           Control.Monad.Trans.Reader (ReaderT (..), runReaderT)
-import           Data.Aeson                 (FromJSON, Value (..), parseJSON)
+import           Data.Aeson                 ((.=), ToJSON, encode, object, toJSON)
 import           Data.Aeson.BetterErrors    (Parse, ParseError, asBool,
                                              asObject, asString, displayError,
                                              eachInArray, eachInObject, key,
                                              keyMay, keyOrDefault,
                                              throwCustomError)
 import qualified Data.Aeson.BetterErrors    as A (parse)
-import qualified Data.ByteString.Lazy       as B (readFile)
+import qualified Data.ByteString.Lazy       as B (hPutStr, readFile)
+import Data.Char (toLower)
 import           Data.HashMap.Lazy          (HashMap, toList)
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T (pack, unlines, unpack)
 import           System.Directory           (doesFileExist)
+import System.IO (withFile, IOMode(WriteMode), writeFile)
 import           Text.Megaparsec            (errorMessages, messageString)
 import qualified Text.Megaparsec            as M (parse)
 
-import           PSBT.SemVer
+import           PSBT.SemVer (Range, displayRange, range)
 
 data Dependency = Dependency {
     packageName :: Text
     , version   :: Maybe Range
     } deriving Show
+
+instance ToJSON Dependency where
+  toJSON d = object [packageName d .= maybe "latest" displayRange (version d)]
 
 data Bower = Bower {
     name              :: String
@@ -46,6 +51,16 @@ data Bower = Bower {
     , devDependencies :: Maybe [Dependency]
     , resolutions     :: Maybe [Dependency]
     } deriving Show
+
+instance ToJSON Bower where
+  toJSON b = object [
+    "name" .= name b
+    , "description" .= description b
+    , "main" .= mainModule b
+    , "dependencies" .= dependencies b
+    , "devDependencies" .= devDependencies b
+    , "resolutions" .= resolutions b
+    ]
 
 data BowerError = JSONError Text
                 | FileNotFound FilePath
@@ -81,6 +96,20 @@ readBowerFile fp = do
         case A.parse asBower bower of
             Left e  -> throwM (JSONError . T.unlines $ displayError id e)
             Right b -> return b
+
+createBowerFile :: (MonadIO m, MonadThrow m) => Bower -> m ()
+createBowerFile bower = liftIO $ do
+  b <- doesFileExist "bower.json"
+  if b then prompt else createTheFile
+  where
+    prompt = do
+      putStrLn "bower.json already exists. Do you want to overwrite it? (y/n)"
+      r <- toLower <$> getChar
+      case r of
+        'y' -> createTheFile
+        'n' -> return ()
+        _   -> prompt
+    createTheFile = withFile "bower.json" WriteMode (\h -> B.hPutStr h $ encode bower)
 
 bowerErrorMessage :: BowerError -> String
 bowerErrorMessage (JSONError msg) = "Error parsing bower.json: " ++ T.unpack msg
