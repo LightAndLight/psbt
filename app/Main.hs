@@ -69,14 +69,13 @@ parserPrefs :: ParserPrefs
 parserPrefs = prefs showHelpOnError
 
 runInit :: MonadIO m => String -> m ()
-runInit str = liftIO $ do
-    createDirectory str
-    setCurrentDirectory str
+runInit name = liftIO $ do
+    createDirectory name
+    setCurrentDirectory name
+    createBowerFile $ minimalBower name
     createDirectory "src"
     createDirectory "test"
-    h <- openFile "bower.json" ReadWriteMode
-    hClose h
-    putStrLn $ "Project created in " ++ str
+    putStrLn $ "Project created in " ++ name
 
 data PackageListing = PackageListing {
     pkgName :: String
