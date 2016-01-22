@@ -21,6 +21,7 @@ library
   build-depends:       base >= 4.7 && < 5
                        , aeson
                        , aeson-better-errors
+                       , aeson-pretty
                        , bytestring
                        , directory
                        , exceptions

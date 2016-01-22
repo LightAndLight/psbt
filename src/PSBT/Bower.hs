@@ -18,24 +18,27 @@ import           Control.Monad.Catch        (Handler (..), MonadThrow, throwM)
 import           Control.Monad.IO.Class     (MonadIO, liftIO)
 import           Control.Monad.Trans.Class  (lift)
 import           Control.Monad.Trans.Reader (ReaderT (..), runReaderT)
-import           Data.Aeson                 ((.=), ToJSON, encode, object, toJSON)
+import           Data.Aeson                 (ToJSON, object, toJSON, (.=))
 import           Data.Aeson.BetterErrors    (Parse, ParseError, asBool,
                                              asObject, asString, displayError,
                                              eachInArray, eachInObject, key,
                                              keyMay, keyOrDefault,
                                              throwCustomError)
 import qualified Data.Aeson.BetterErrors    as A (parse)
+import           Data.Aeson.Encode.Pretty   (Config (..), defConfig,
+                                             encodePretty', keyOrder)
 import qualified Data.ByteString.Lazy       as B (hPutStr, readFile)
 import           Data.Char                  (toLower)
 import           Data.HashMap.Lazy          (HashMap, toList)
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T (pack, unlines, unpack)
 import           System.Directory           (doesFileExist)
-import           System.IO                  (IOMode(WriteMode), withFile, writeFile)
+import           System.IO                  (IOMode (WriteMode), withFile,
+                                             writeFile)
 import           Text.Megaparsec            (errorMessages, messageString)
 import qualified Text.Megaparsec            as M (parse)
 
-import           PSBT.SemVer (Range, displayRange, range)
+import           PSBT.SemVer                (Range, displayRange, range)
 
 data Dependency = Dependency {
     packageName :: Text
@@ -114,7 +117,9 @@ createBowerFile bower = liftIO $ do
         'y' -> createTheFile
         'n' -> return ()
         _   -> prompt
-    createTheFile = withFile "bower.json" WriteMode (\h -> B.hPutStr h $ encode bower)
+    orderList = ["name","description","main","dependencies","devDependencies","resolutions"]
+    jsonString = encodePretty' defConfig { confCompare = keyOrder orderList } bower
+    createTheFile = withFile "bower.json" WriteMode (`B.hPutStr` jsonString)
 
 bowerErrorMessage :: BowerError -> String
 bowerErrorMessage (JSONError msg) = "Error parsing bower.json: " ++ T.unpack msg
